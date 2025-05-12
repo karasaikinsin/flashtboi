@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>The Binding of Isaac - Управление v3</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden; /* Предотвращаем появление полос прокрутки */
+    }
+
+    #game-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    #flash-container {
+      width: 95vw; 
+      aspect-ratio: 800 / 600;
+      max-width: 800px;
+      max-height: 600px;
+      background-color: black;
+      position: relative;
+      box-shadow: 0 0 15px rgba(0,0,0,0.7);
+    }
+
+    @media (orientation: portrait) and (max-aspect-ratio: 800/600) {
+      #flash-container {
+        height: 75vh;
+        width: calc(75vh * (800 / 600));
+      }
+    }
+    @media (orientation: landscape), (min-aspect-ratio: 800/600) {
+        #flash-container {
+            width: 95vw;
+            height: calc(95vw * (600 / 800));
+            max-height: 95vh;
+        }
+        /* Дополнительное правило, если высота становится ограничителем при ландшафтной ориентации */
+        @media (min-width: calc(95vh * (800 / 600))) { /* Если ширина была бы больше, чем позволяет высота */
+             #flash-container {
+                height: 95vh;
+                width: calc(95vh * (800 / 600));
+            }
+        }
+    }
+
+    #flash-container > ruffle-player,
+    #flash-container div[data-ruffle-player] > ruffle-player {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain;
+    }
+
+    .controls-overlay {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 5px 10px;
+      box-sizing: border-box;
+      z-index: 2000;
+      pointer-events: none;
+      background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.2) 60%, transparent 100%);
+    }
+
+    .left-stick, .right-cluster-wrapper {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      padding: 5px;
+    }
+    
+    .left-stick {
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .right-cluster-wrapper {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+    }
+
+    .shooting-controls-stack, .action-buttons-main, .action-buttons-aux {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+    }
+    .action-buttons-main {
+        gap: 10px;
+    }
+
+    .left-stick-bottom-row, .right-stick-bottom-row {
+      display: flex;
+      gap: 5px;
+    }
+
+    .btn {
+      width: 48px;
+      height: 48px;
+      background-color: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(150, 150, 150, 0.7);
+      border-radius: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.1s ease, transform 0.1s ease;
+    }
+
+    .btn:active {
+      background-color: rgba(80, 80, 80, 0.9);
+      transform: scale(0.95);
+    }
+    
+    .large-btn {
+        width: 96px;
+        height: 48px;
+    }
+
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <div id="flash-container">
+      </div>
+</div>
+
+<div class="controls-overlay">
+    <div class="left-stick">
+        <button class="btn" id="up">W</button>
+        <div class="left-stick-bottom-row">
+            <button class="btn" id="left">A</button>
+            <button class="btn" id="down">S</button>
+            <button class="btn" id="right">D</button>
+        </div>
+    </div>
+
+    <div class="right-cluster-wrapper">
+        <div class="action-buttons-main">
+            <button class="btn large-btn" id="space">Space</button>
+            <button class="btn" id="bomb">E</button>
+        </div>
+        <div class="shooting-controls-stack">
+            <button class="btn" id="shoot">↑</button>
+            <div class="right-stick-bottom-row">
+                <button class="btn" id="shootLeft">←</button>
+                <button class="btn" id="shootDown">↓</button>
+                <button class="btn" id="shootRight">→</button>
+            </div>
+        </div>
+         <div class="action-buttons-aux">
+            <button class="btn" id="map">Q</button>
+            <button class="btn" id="pause">Esc</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+<script>
+  // Глобальная ссылка на плеер Ruffle
+  let rufflePlayerInstance = null;
+
+  // Карта для keyCode и which (legacy)
+  const keyToKeyCodeMap = {
+      "W": 87, "A": 65, "S": 83, "D": 68,
+      "ArrowUp": 38, "ArrowLeft": 37, "ArrowDown": 40, "ArrowRight": 39,
+      " ": 32, // Space
+      "E": 69,
+      "Q": 81,
+      "Escape": 27,
+      // Добавьте другие по необходимости
+  };
+  
+  function keyToCode(key) {
+      if (key.length === 1 && key >= 'a' && key <= 'z') return `Key${key.toUpperCase()}`;
+      if (key.length === 1 && key >= 'A' && key <= 'Z') return `Key${key}`;
+      // Для специальных клавиш, которые уже передаются в правильном формате (ArrowUp, Space, Escape)
+      if (/^[A-Z][a-zA-Z0-9]+$/.test(key) || key === " ") return key; // e.g. ArrowUp, Space, Escape
+      return `Key${key.toUpperCase()}`; // По умолчанию
+  }
+
+  function dispatchKeyEvent(eventType, keyString, targetWindow, playerElement) {
+    const keyCodeVal = keyToKeyCodeMap[keyString] || 0;
+    const codeVal = keyToCode(keyString);
+
+    const event = new KeyboardEvent(eventType, {
+      key: keyString,
+      code: codeVal,
+      keyCode: keyCodeVal, // Legacy
+      which: keyCodeVal,   // Legacy
+      bubbles: true,
+      cancelable: true,
+      composed: true // Позволяет событию проходить через Shadow DOM (важно для Ruffle)
+    });
+
+    console.log(`Dispatching ${eventType}: key="${keyString}", code="${codeVal}", keyCode=${keyCodeVal}`);
+    
+    // Попытка сфокусироваться на плеере перед отправкой события
+    if (playerElement && typeof playerElement.focus === 'function') {
+        try {
+            playerElement.focus();
+        } catch (e) {
+            console.warn("Could not focus player element:", e);
+        }
+    }
+    
+    targetWindow.dispatchEvent(event);
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const ruffle = window.RufflePlayer.newest();
+    const container = document.getElementById("flash-container");
+    
+    if (!container) {
+        console.error("#flash-container не найден!");
+        document.body.innerHTML = "<p style='color:red; text-align:center;'>Ошибка: Контейнер #flash-container не найден.</p>";
+        return;
+    }
+    
+    rufflePlayerInstance = ruffle.createPlayer(); // Сохраняем экземпляр плеера
+    container.replaceChildren(rufflePlayerInstance); 
+    
+    rufflePlayerInstance.load("static/tboi.swf").then(() => {
+        console.log("Игра загружена через Ruffle.");
+        if (rufflePlayerInstance && typeof rufflePlayerInstance.focus === 'function') {
+            try {
+                rufflePlayerInstance.focus(); // Первичная попытка фокуса после загрузки
+                console.log("Ruffle player focused after load.");
+            } catch (e) {
+                console.warn("Could not focus Ruffle player after load:", e);
+            }
+        }
+    }).catch((err) => {
+        console.error("Ошибка загрузки игры через Ruffle:", err);
+        container.innerHTML = "<p style='color:red; text-align:center;'>Ошибка загрузки игры. Проверьте путь к файлу tboi.swf и консоль на наличие ошибок сети.</p>";
+    });
+
+    const controls = {
+      "W": document.getElementById("up"),
+      "A": document.getElementById("left"),
+      "S": document.getElementById("down"),
+      "D": document.getElementById("right"),
+      "ArrowUp": document.getElementById("shoot"),
+      "ArrowLeft": document.getElementById("shootLeft"),
+      "ArrowDown": document.getElementById("shootDown"),
+      "ArrowRight": document.getElementById("shootRight"),
+      " ": document.getElementById("space"),
+      "E": document.getElementById("bomb"),
+      "Q": document.getElementById("map"),
+      "Escape": document.getElementById("pause"),
+    };
+
+    Object.keys(controls).forEach(keyString => {
+      const button = controls[keyString];
+      if (!button) {
+          console.warn(`Кнопка для виртуальной клавиши "${keyString}" не найдена в DOM.`);
+          return;
+      }
+      button.addEventListener("click", () => {
+        console.log(`Нажата виртуальная кнопка: "${keyString}"`);
+        if (!rufflePlayerInstance) {
+            console.error("Экземпляр Ruffle player не найден для отправки событий.");
+            return;
+        }
+
+        // Отправляем keydown
+        dispatchKeyEvent("keydown", keyString, window, rufflePlayerInstance);
+
+        // Отправляем keyup после небольшой задержки
+        setTimeout(() => {
+          dispatchKeyEvent("keyup", keyString, window, rufflePlayerInstance);
+        }, 50); // 50ms задержка, можно настроить
+      });
+    });
+    
+    // Отладочный обработчик для реальных нажатий клавиатуры
+    // document.addEventListener("keydown", (e) => {
+    //   console.log(`Реальное нажатие (document): Key="${e.key}", Code="${e.code}", keyCode=${e.keyCode}`);
+    // });
+    // window.addEventListener("keydown", (e) => {
+    //    console.log(`Реальное нажатие (window): Key="${e.key}", Code="${e.code}", keyCode=${e.keyCode}`);
+    // });
+  });
+</script>
+</body>
+</html>
