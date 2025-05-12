@@ -247,7 +247,7 @@
     rufflePlayerInstance = ruffle.createPlayer(); // Сохраняем экземпляр плеера
     container.replaceChildren(rufflePlayerInstance); 
     
-    rufflePlayerInstance.load("static/tboi.swf").then(() => {
+    rufflePlayerInstance.load("https://archive.org/download/the-binding-of-isaac_202111/The%20Binding%20of%20Isaac.swf").then(() => {
         console.log("Игра загружена через Ruffle.");
         if (rufflePlayerInstance && typeof rufflePlayerInstance.focus === 'function') {
             try {
